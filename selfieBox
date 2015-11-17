@@ -1,0 +1,106 @@
+#!/bin/bash
+
+lightTime=30
+
+source /usr/local/bin/gpio
+
+button1=4
+busyLED=17
+readyLED=27
+errorLED=22
+lightLED=23
+
+lightOnTime=""
+tmpStore=/tmp/selfieCam
+URL=http://192.168.1.219/selfieboxapi/api/1/photos/
+
+trap "selfieCam_exit"  SIGINT SIGTERM
+trap "selfieCam_takePicture" USR1
+trap "echo it woke!" USR2
+
+# house cleaning, invoked when SIGINT or SIGTERM are received
+selfieCam_exit() {
+  echo "Exiting...."
+  # temporary directory is removed if empty
+  rmdir $tmpStore 2> /dev/null
+  gpio write ${readyLED} 0
+  gpio write ${busyLED} 0
+  gpio write ${errorLED} 0
+  gpio write ${lightLED} 0
+  exit
+}
+
+selfieCam_takePicture() {
+  gpio write ${busyLED} 1
+  light 1
+  echo "Capuring..."
+  newFilename=${tmpStore}/$(date +"%Y%M%d-%H%M%S").jpg
+  raspistill -vf -hf  -n -o ${newFilename}
+  selfieCam_upload &
+  echo "Ready"
+  gpio write ${busyLED} 0
+}
+
+selfieCam_upload() {
+  for file in $(ls ${tmpStore})
+  do
+    selfieCam_uploadFile ${tmpStore}/${file}
+  done
+}
+
+selfieCam_uploadFile() {
+  FILE=$1
+  OK='{"version":"1.0","paging":{}}'
+  if [[ $(curl -s -F "path=@${FILE}" $URL) == $OK ]] 
+  then  
+    errorState 0
+    rm ${FILE}
+  else
+    errorState 1
+  fi
+  kill -USR2 $$
+}
+
+errorState() {
+  gpio write ${errorLED} $1
+}
+
+light() {
+  if [[ $1 == "1" ]]
+  then
+    gpio write ${lightLED} 1
+    lightOnTime=$(date +%s)
+  else
+    if [[ ${lightOnTime} != "" ]]
+    then
+      if [[ $(date +%s) -gt $((${lightOnTime}+${lightTime})) ]]
+      then
+        gpio write ${lightLED} 0
+        lightOnTime=""
+      fi
+    fi
+  fi 
+}
+
+
+[[ -d ${tmpStore} ]] || mkdir ${tmpStore}
+
+
+gpio mode ${button1} in
+gpio mode ${busyLED} out
+gpio mode ${readyLED} out
+gpio mode ${errorLED} out
+gpio mode ${lightLED} out
+gpio write ${busyLED} 0
+gpio write ${readyLED} 1
+gpio write ${errorLED} 0
+gpio write ${lightLED} 0
+
+while true
+do
+  if [[ $(gpio read ${button1}) -eq 0 ]]
+  then
+    selfieCam_takePicture
+  fi
+  light
+done
