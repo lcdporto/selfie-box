@@ -15,13 +15,19 @@ URL=http://192.168.1.219/selfieboxapi/api/1/photos/
 #       fully updated with the rpi-update command and full raspbian update
 source /usr/local/bin/gpio
 
+# GPIO PINs definitions
 button1=4
 busyLED=17
 readyLED=27
 errorLED=22
-lightLED=23
+lightPIN=23
 
-lightOnTime=""
+# file in shared memmory to store the time the last photo was taken
+IPCtimeOfLastPhoto="/dev/shm/"$(basename $0)$$"timeOfLastPhoto"
+
+# interval for checking if it's time to turn off the light
+lightCheckInterval=20
+
 tmpStore=/tmp/selfieCam
 
 trap "selfieCam_exit"  SIGINT SIGTERM
@@ -29,7 +35,7 @@ trap "selfieCam_takePicture" USR1
 trap "echo it woke!" USR2
 
 
-# < functions definitions
+#======= < function definitions
 
 # house cleaning, invoked when SIGINT or SIGTERM are received
 selfieCam_exit() {
@@ -38,11 +44,14 @@ selfieCam_exit() {
   # temporary directory is removed if empty
   rmdir $tmpStore 2> /dev/null
 
+  # have the function that handles the IPC file clear it
+  lightOnTime clear
+
   # turn off LEDs
   gpio write ${readyLED} 0
   gpio write ${busyLED} 0
   gpio write ${errorLED} 0
-  gpio write ${lightLED} 0
+  gpio write ${lightPIN} 0
   exit
 }
 
@@ -81,22 +90,22 @@ errorState() {
   gpio write ${errorLED} $1
 }
 
-# < ilumination light management functions start
+#--- < ilumination light management functions start
 
 # turn on light and record time
 lightOn() {
-  gpio write ${lightLED} 1
-  lightOnTime=$(date +%s)
+  gpio write $lightPIN 1
+  lightOnTime set
 }
 
 # check if it's time to turn off the light runs independently in a loop
 lightCheck() {
   while true
   do
-    sleep 20
-    if [[ ${lightOnTime} != "" ]]
+    sleep $lightCheckInterval
+    if [[ lightOnTime != "" ]]
     then
-      if [[ $(date +%s) -gt $((${lightOnTime}+${lightTime})) ]]
+      if [[ $(date +%s) -gt $(( lightOnTime + $lightTime )) ]]
       then
         lightOff
       fi
@@ -106,11 +115,33 @@ lightCheck() {
 
 # turn of the light
 lightOff(){
-  gpio write ${lightLED} 0
-  lightOnTime=""
+  gpio write ${lightPIN} 0
+  lightOnTime clear
 }
 
-# // functions definitions >
+# set or read the lightOn time from the IPC file
+#
+# when called with a parameter (any one) it records the time
+# else it echoes the prevously recorded time
+lightOnTime() {
+  case $1 in
+    set )
+      # record the tirrent time
+      echo $(date +%s) > $IPCtimeOfLastPhoto
+      ;;
+    clear )
+      # clear the file
+      rm $IPCtimeOfLastPhoto
+    * )
+      # echo the prevously recorded time
+      [[ -r $IPCtimeOfLastPhoto ]] $$ cat $IPCtimeOfLastPhoto
+      ;;
+  esac
+}
+
+#--- / end ilumination light management functions >
+
+#======= // function definitions >
 
 
 [[ -d ${tmpStore} ]] || mkdir ${tmpStore}
@@ -119,11 +150,11 @@ gpio mode ${button1} in
 gpio mode ${busyLED} out
 gpio mode ${readyLED} out
 gpio mode ${errorLED} out
-gpio mode ${lightLED} out
+gpio mode ${lightPIN} out
 gpio write ${busyLED} 0
 gpio write ${readyLED} 1
 gpio write ${errorLED} 0
-gpio write ${lightLED} 0
+gpio write ${lightPIN} 0
 
 # start the light off time checker in a secondary loop
 lightCheck &
