@@ -12,11 +12,11 @@ URL=http://192.168.1.219/selfieboxapi/api/1/photos/
 ###          ----- do not edit past this point -----
 
 # GPIO PINs definitions
-button1=4
-busyLED=17
-readyLED=27
-errorLED=22
-lightPIN=23
+button1=7
+busyLED=0
+readyLED=2
+errorLED=3
+lightPIN=4
 
 # file in shared memmory to store the time the last photo was taken
 IPCtimeOfLastPhoto="/dev/shm/"$(basename $0)$$"timeOfLastPhoto"
@@ -40,6 +40,8 @@ selfieCam_exit() {
   # temporary directory is removed if empty
   rmdir $tmpStore 2> /dev/null
 
+  # terminate all possible background processes 
+  kill -- -$$
   # have the function that handles the IPC file clear it
   lightOnTime clear
 
