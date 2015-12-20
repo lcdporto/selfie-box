@@ -11,10 +11,6 @@ URL=http://192.168.1.219/selfieboxapi/api/1/photos/
 
 ###          ----- do not edit past this point -----
 
-# @TODO check if the gpio script is still needed if the Raspberry Pi is
-#       fully updated with the rpi-update command and full raspbian update
-source /usr/local/bin/gpio
-
 # GPIO PINs definitions
 button1=4
 busyLED=17
@@ -132,9 +128,10 @@ lightOnTime() {
     clear )
       # clear the file
       rm $IPCtimeOfLastPhoto
+      ;;
     * )
       # echo the prevously recorded time
-      [[ -r $IPCtimeOfLastPhoto ]] $$ cat $IPCtimeOfLastPhoto
+      [[ -r $IPCtimeOfLastPhoto ]] && cat $IPCtimeOfLastPhoto
       ;;
   esac
 }
