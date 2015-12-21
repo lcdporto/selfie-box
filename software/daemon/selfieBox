@@ -7,7 +7,8 @@
 lightTime=30
 
 # API URL, this will used in the selfieCam_uploadFile() function
-URL=http://192.168.1.219/selfieboxapi/api/1/photos/
+API_URL=http://192.168.1.219/selfieboxapi/api/1/photos/
+API_OK_MSG='{"version":"1.0","paging":{}}'
 
 ###          ----- do not edit past this point -----
 
@@ -21,26 +22,30 @@ lightPIN=4
 # file in shared memmory to store the time the last photo was taken
 IPCtimeOfLastPhoto="/dev/shm/"$(basename $0)$$"timeOfLastPhoto"
 
-# interval for checking if it's time to turn off the light
+# interval (in seconds) for checking if it's time to turn off the light
 lightCheckInterval=20
 
 tmpStore=/tmp/selfieCam
 
-trap "selfieCam_exit"  SIGINT SIGTERM
-trap "selfieCam_takePicture" USR1
-trap "echo it woke!" USR2
+# trap exit signals to do some cleanup before exit
+trap "selfieBox_exit"  SIGINT SIGTERM
+
+# trap to enable the servive to be signaled to take a picture
+# the init.d script will signal this running daemon
+# command: /etc/init.d/selfieBox capture
+trap "selfieBox_takePicture" USR1
 
 
 #======= < function definitions
 
 # house cleaning, invoked when SIGINT or SIGTERM are received
-selfieCam_exit() {
+selfieBox_exit() {
   echo "Exiting...."
 
   # temporary directory is removed if empty
   rmdir $tmpStore 2> /dev/null
 
-  # terminate all possible background processes 
+  # terminate all possible background processes
   kill -- -$$
   # have the function that handles the IPC file clear it
   lightOnTime clear
@@ -53,12 +58,12 @@ selfieCam_exit() {
   exit
 }
 
-selfieCam_takePicture() {
+# take picture, store in temporary directory and invoke background uploader
+selfieBox_takePicture() {
+  echo "Capuring..."
   gpio write ${busyLED} 1
   lightOn
-  echo "Capuring..."
-  newFilename=${tmpStore}/$(date +"%Y%M%d-%H%M%S").jpg
-  raspistill -vf -hf  -n -o ${newFilename}
+  raspistill -vf -hf  -n -o ${tmpStore}/$(date +"%Y%M%d-%H%M%S").jpg
   selfieCam_upload &
   echo "Ready"
   gpio write ${busyLED} 0
@@ -71,17 +76,18 @@ selfieCam_upload() {
   done
 }
 
+# upload a single file to the server and check output
 selfieCam_uploadFile() {
   FILE=$1
-  OK='{"version":"1.0","paging":{}}'
-  if [[ $(curl -s -F "path=@${FILE}" $URL) == $OK ]]
+  if [[ $(curl -s -F "path=@${FILE}" $API_URL) == $API_OK_MSG ]]
   then
+    # all OK, unflag errorState and remove file from temporary storage
     errorState 0
     rm ${FILE}
   else
+    # upload didn't return expected output, flag error state
     errorState 1
   fi
-  kill -USR2 $$
 }
 
 errorState() {
@@ -162,6 +168,6 @@ while true
 do
   if [[ $(gpio read ${button1}) -eq 0 ]]
   then
-    selfieCam_takePicture
+    selfieBox_takePicture
   fi
 done
