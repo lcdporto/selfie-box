@@ -2,11 +2,13 @@
 #------------
 # selfieBox - deamon
 
+verbose=true
+
 # for how long the illumination light will
 # stay turned of after a photo is taken
 lightTime=30
 
-# API URL, this will used in the selfieCam_uploadFile() function
+# API URL, this will used in the selfieBox_uploadFile() function
 API_URL=http://192.168.1.219/selfieboxapi/api/1/photos/
 API_OK_MSG='{"version":"1.0","paging":{}}'
 
@@ -40,7 +42,7 @@ trap "selfieBox_takePicture" USR1
 
 # house cleaning, invoked when SIGINT or SIGTERM are received
 selfieBox_exit() {
-  echo "Exiting...."
+  say "Exiting...."
 
   # temporary directory is removed if empty
   rmdir $tmpStore 2> /dev/null
@@ -60,73 +62,73 @@ selfieBox_exit() {
 
 # take picture, store in temporary directory and invoke background uploader
 selfieBox_takePicture() {
-  echo "Capuring..."
+  say "Capuring..."
   gpio write ${busyLED} 1
-  lightOn
+  light on
   raspistill -vf -hf  -n -o ${tmpStore}/$(date +"%Y%M%d-%H%M%S").jpg
-  selfieCam_upload &
-  echo "Ready"
+  selfieBox_upload &
+  say "Post capture, ready"
   gpio write ${busyLED} 0
 }
 
-selfieCam_upload() {
-  for file in $(ls ${tmpStore})
-  do
-    selfieCam_uploadFile ${tmpStore}/${file}
-  done
+#--- < Upload functions - start
+
+
+# Start the background upload process if it's not already running
+selfieBox_upload() {
+  isRunning $UploadProcessID || {
+    selfieBox_uploadFiles &
+    UploadProcessID=$!
+  }
 }
 
-# upload a single file to the server and check output
-selfieCam_uploadFile() {
-  FILE=$1
-  if [[ $(curl -s -F "path=@${FILE}" $API_URL) == $API_OK_MSG ]]
-  then
-    # all OK, unflag errorState and remove file from temporary storage
-    errorState 0
-    rm ${FILE}
-  else
-    # upload didn't return expected output, flag error state
-    errorState 1
-  fi
+# upload files in the $tmpStore directory
+selfieBox_uploadFiles() {
+  for FILE in $(ls ${tmpStore})
+  do
+    if [[ $(curl -s -F "path=@${tmpStore}/${FILE}" $API_URL) == $API_OK_MSG ]]
+    then
+      # all OK, unflag errorState and remove file from temporary storage
+      errorState 0
+      rm ${FILE}
+    else
+      # upload didn't return expected output, flag error state and exit
+      errorState 1
+      return 1
+    fi
+  done
 }
 
 errorState() {
   gpio write ${errorLED} $1
 }
 
-#--- < ilumination light management functions start
-
-# turn on light and record time
-lightOn() {
-  gpio write $lightPIN 1
-  lightOnTime set
+# returns true (0) if a process is running
+isRunning() {
+  kill -0 $1 > /dev/null 2>&1
+  return $?
 }
+#--- /end - upload functions>
+
+#--- < ilumination light management functions start
 
 # check if it's time to turn off the light runs independently in a loop
 lightCheck() {
   while true
   do
     sleep $lightCheckInterval
-    if [[ lightOnTime != "" ]]
+    if [[ $(lightOnTime) != "" ]]
     then
-      if [[ $(date +%s) -gt $(( lightOnTime + $lightTime )) ]]
+      if [[ $(date +%s) -gt $(( $(lightOnTime) + $lightTime )) ]]
       then
-        lightOff
+        say "turning off light"
+        light off
       fi
     fi
   done
 }
 
-# turn of the light
-lightOff(){
-  gpio write ${lightPIN} 0
-  lightOnTime clear
-}
-
 # set or read the lightOn time from the IPC file
-#
-# when called with a parameter (any one) it records the time
-# else it echoes the prevously recorded time
 lightOnTime() {
   case $1 in
     set )
@@ -135,7 +137,7 @@ lightOnTime() {
       ;;
     clear )
       # clear the file
-      rm $IPCtimeOfLastPhoto
+      rm $IPCtimeOfLastPhoto 2> /dev/null
       ;;
     * )
       # echo the prevously recorded time
@@ -144,13 +146,35 @@ lightOnTime() {
   esac
 }
 
+light() {
+  case $1 in
+    on)
+      gpio write $lightPIN 1
+      lightOnTime set
+      ;;
+    off)
+      gpio write ${lightPIN} 0
+      lightOnTime clear
+      ;;
+  esac
+}
+
 #--- / end ilumination light management functions >
+
+#--- < general functions start
+
+say() {
+  [[ $verbose == true ]] && echo $1
+}
+
+#--- / end general functions >
 
 #======= // function definitions >
 
-
+# create the temporary directory if it doesn't exist
 [[ -d ${tmpStore} ]] || mkdir ${tmpStore}
 
+# start the the GPIO PINs
 gpio mode ${button1} in
 gpio mode ${busyLED} out
 gpio mode ${readyLED} out
@@ -164,6 +188,10 @@ gpio write ${lightPIN} 0
 # start the light off time checker in a secondary loop
 lightCheck &
 
+# start the upload process of pending files from prevoius sessions
+selfieBox_upload
+
+say "starting loop"
 while true
 do
   if [[ $(gpio read ${button1}) -eq 0 ]]
