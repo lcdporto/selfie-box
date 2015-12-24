@@ -27,7 +27,7 @@ IPCtimeOfLastPhoto="/dev/shm/"$(basename $0)$$"timeOfLastPhoto"
 # interval (in seconds) for checking if it's time to turn off the light
 lightCheckInterval=20
 
-tmpStore=/tmp/selfieCam
+tmpStore=/tmp/selfieBox
 
 # trap exit signals to do some cleanup before exit
 trap "selfieBox_exit"  SIGINT SIGTERM
@@ -90,7 +90,7 @@ selfieBox_uploadFiles() {
     then
       # all OK, unflag errorState and remove file from temporary storage
       errorState 0
-      rm ${FILE}
+      rm ${tmpStore}/${FILE}
     else
       # upload didn't return expected output, flag error state and exit
       errorState 1
