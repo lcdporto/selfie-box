@@ -1,1 +1,1 @@
-# SelfieBox - Hardware #
+# SelfieBox, firmware and hardware #
