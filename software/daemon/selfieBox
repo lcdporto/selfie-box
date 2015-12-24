@@ -2,15 +2,26 @@
 #------------
 # selfieBox - deamon
 
-verbose=true
+# enable the outout to stdout of debug messages?
+verbose=false
 
 # for how long the illumination light will
-# stay turned of after a photo is taken
-lightTime=30
+# stay turned on after a photo is taken
+lightTime=120
+
+# interval (in seconds) for checking if it's time to turn off the light
+lightCheckInterval=20
 
 # API URL, this will used in the selfieBox_uploadFile() function
 API_URL=http://192.168.1.219/selfieboxapi/api/1/photos/
+
+# API OK MESSAGE, if the API does not return this message after
+# a file is uploaded a upload error is presumed
 API_OK_MSG='{"version":"1.0","paging":{}}'
+
+# temporary directory used to store image files between being
+# taken and being uploaded to the server
+tmpStore=/tmp/selfieBox
 
 ###          ----- do not edit past this point -----
 
@@ -24,10 +35,9 @@ lightPIN=4
 # file in shared memmory to store the time the last photo was taken
 IPCtimeOfLastPhoto="/dev/shm/"$(basename $0)$$"timeOfLastPhoto"
 
-# interval (in seconds) for checking if it's time to turn off the light
-lightCheckInterval=20
-
-tmpStore=/tmp/selfieBox
+# if the config files exists read it in the current process
+# so it can replace the values set above
+[[ -r /etc/selfieBox.conf ]] && . /etc/selfieBox.conf
 
 # trap exit signals to do some cleanup before exit
 trap "selfieBox_exit"  SIGINT SIGTERM
