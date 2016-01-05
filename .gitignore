@@ -1,0 +1,6 @@
+# linux and mac temporary files
+*~
+.DS_Store
+
+# emacs temporary files
+\#*#\
