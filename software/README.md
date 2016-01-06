@@ -17,6 +17,12 @@ This daemon will read a config file on `/etc/selfieBox`,
 values of variables set on that file will replace defaults
 hardcoded in the daemon code.
 
+#### auth file ####
+
+The username and password need to authenticate into the API are
+kept on a separate file (`/etc/selfieBox.auth`) so it can be kept
+on the `.gitignore` file.
+
 ### init script ###
 
 Will install into `/etc/init.d/selfieBox`
@@ -27,11 +33,11 @@ started as a system service.
 To the automatically run on system boot the service must be
 activated.
 ```
-sudo update-rc.d selfieCam defaults
+sudo update-rc.d selfieBox defaults
 ```
 
 
 If you wish to remove the service from boot:
 ```
- sudo update-rc.d selfieCam remove
+sudo update-rc.d selfieBox remove
 ```

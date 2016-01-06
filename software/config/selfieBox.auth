@@ -1,0 +1,8 @@
+#!/bin/bash
+#---
+# This file stores the username and password needed to authenticate into
+# the API and upload the photos
+#---
+
+AUTHuser=
+AUTHpass=
